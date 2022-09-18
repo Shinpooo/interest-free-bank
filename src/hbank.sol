@@ -6,51 +6,115 @@ import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 
 
 contract HBank is Ownable {
-    mapping (address => bool) assetIsSupported;
+    // mapping (address => bool) assetIsSupported;
     // mapping (address => uint) suppliedAmount;
     // mapping (address => uint) borrowedAmount;
 
     mapping (address => uint[]) userToSuppliedAmounts;
     mapping (address => uint[]) userToBorrowedAmounts;
-    mapping (address => uint) assetToIndex;
+    // mapping (address => uint) assetToIndex;
+    // mapping (address => address) assetToPriceFeed;
+
+    struct Asset {
+        address token;
+        uint id;
+        address priceFeed;
+        uint supplied;
+        uint borrowed;
+    }
+
+    mapping (uint => Asset) assetIdToAsset;
 
     uint assetCounter;
 
-    constructor() {}
-
-    modifier isWhitelisted(address asset) {
-      require(assetIsSupported[asset]);
-      _;
-   }
-
-    function supply(address asset, uint amount) external isWhitelisted(asset) {
-        IERC20(asset).transferFrom(msg.sender, address(this), amount);
-        userToSuppliedAmounts[msg.sender][assetToIndex[asset]] += amount;
+    constructor() {
+        addAsset([]);
     }
 
-    function withraw(address asset, uint amount) external isWhitelisted(asset) {
-        IERC20(asset).transferFrom(address(this), msg.sender, amount);
-        userToSuppliedAmounts[msg.sender][assetToIndex[asset]] -= amount; // revert if < 0
-    }
+//     modifier isWhitelisted(address asset) {
+//       require(assetIsSupported[asset]);
+//       _;
+//    }
+
+    function supply(uint assetId, uint amount) external {
+        Asset storage asset_data = assetIdToAsset[assetId];
+        IERC20(asset_data.token).transferFrom(msg.sender, address(this), amount);
+        userToSuppliedAmounts[msg.sender][assetId] += amount;
+        asset_data.supplied += amount;
     }
 
-    function borrow(address asset, uint amount) external isWhitelisted(asset) {
-        
+    function withdraw(uint assetId, uint amount) external {
+        uint max_borrow = (getUserSuppliedUSD(msg.sender) - getUserBorrowedUSD(msg.sender)) * 80 /100;
+        require(amount <= max_borrow, "already borrewed max");
+        Asset storage asset_data = assetIdToAsset[assetId];
+        IERC20(asset_data.token).transferFrom(address(this), msg.sender, amount);
+        userToSuppliedAmounts[msg.sender][assetId] -= amount; // revert if < 0
+        asset_data.supplied -= amount;
     }
 
-    function repay(address asset, uint amount) external isWhitelisted(asset) {
-        
+    function borrow(uint assetId, uint amount) external {
+        uint max_borrow = (getUserSuppliedUSD(msg.sender) - getUserBorrowedUSD(msg.sender)) * 80 /100;
+        require(amount <= max_borrow, "already borrowed max");
+        Asset storage asset_data = assetIdToAsset[assetId];
+        IERC20(asset_data.token).transferFrom(address(this), msg.sender, amount);
+        userToBorrowedAmounts[msg.sender][assetId] += amount;
+        asset_data.supplied += amount;
     }
 
-    function getSuppliedUSD(address user) external view returns (uint USDamount) {
-        for (i=0; i<assetCounter; i++){
-            USDamount += userToSuppliedAmounts[user][i] * assetPrice;
+    function repay(uint assetId, uint amount) external {
+        Asset storage asset_data = assetIdToAsset[assetId];
+        IERC20(asset_data.token).transferFrom(msg.sender, address(this), amount);
+        userToBorrowedAmounts[msg.sender][assetId] -= amount;
+        asset_data.supplied -= amount; 
+    }
+
+    function getUserSuppliedUSD(address user) public view returns (uint USDamount) {
+        for (uint i=0; i<assetCounter; i++){
+            Asset memory asset_data = assetIdToAsset[i];
+            uint asset_price = getLatestPrice(asset_data.priceFeed);
+            USDamount += userToSuppliedAmounts[user][i] * asset_price;
         }
     }
 
-    function whiteListAsset(address asset) public onlyOwner {
-        assetIsSupported[asset] = true;
-        assetToIndex[asset] = assetCounter;
+    function getUserBorrowedUSD(address user) public view returns (uint USDamount) {
+        for (uint i=0; i<assetCounter; i++){
+            Asset memory asset_data = assetIdToAsset[i];
+            uint asset_price = getLatestPrice(asset_data.priceFeed);
+            USDamount += userToBorrowedAmounts[user][i] * asset_price;
+        }
+    }
+
+    function getSuppliedUSD() public view returns (uint USDamount) {
+        for (uint i=0; i<assetCounter; i++){
+            Asset memory asset_data = assetIdToAsset[i];
+            uint asset_price = getLatestPrice(asset_data.priceFeed);
+            USDamount += asset_data.supplied * asset_price;
+        }
+    }
+
+    function getBorrowedUSD() public view returns (uint USDamount) {
+        for (uint i=0; i<assetCounter; i++){
+            Asset memory asset_data = assetIdToAsset[i];
+            uint asset_price = getLatestPrice(asset_data.priceFeed);
+            USDamount += asset_data.borrowed * asset_price;
+        }
+    }
+
+    function getLatestPrice(address priceFeed) internal view returns (uint) {
+        (,int price,,,) = AggregatorV3Interface(priceFeed).latestRoundData();
+        return uint(price / 1e8);
+    }
+
+    function addAsset(address token, address priceFeed) public onlyOwner {
+        // assetIsSupported[asset] = true;
+        Asset memory asset_data;
+        asset_data.id = assetCounter;
+        asset_data.token = token;
+        asset_data.priceFeed = priceFeed;
+        assetIdToAsset[assetCounter] = asset_data;
+        // assetToIndex[asset] = assetCounter;
+        // indexToAsset[assetCounter] = asset;
+        // assetToPriceFeed[asset] = priceFeed;
         assetCounter += 1;
     }
 }
