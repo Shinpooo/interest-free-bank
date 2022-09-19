@@ -6,14 +6,11 @@ import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 
 
 contract HBank is Ownable {
-    // mapping (address => bool) assetIsSupported;
-    // mapping (address => uint) suppliedAmount;
-    // mapping (address => uint) borrowedAmount;
+
     uint public assetCounter;
-    mapping (address => mapping(uint => uint)) userToSuppliedAmounts;
-    mapping (address => mapping(uint => uint)) userToBorrowedAmounts;
-    // mapping (address => uint) assetToIndex;
-    // mapping (address => address) assetToPriceFeed;
+    mapping (address => mapping(uint => uint)) public userToSuppliedAmounts;
+    mapping (address => mapping(uint => uint)) public userToBorrowedAmounts;
+
 
     struct Asset {
         address token;
@@ -30,13 +27,7 @@ contract HBank is Ownable {
 
 
     constructor() {
-        // addAsset();
     }
-
-//     modifier isWhitelisted(address asset) {
-//       require(assetIsSupported[asset]);
-//       _;
-//    }
 
     function supply(uint assetId, uint amount) external {
         Asset storage asset_data = assetIdToAsset[assetId];
@@ -47,10 +38,10 @@ contract HBank is Ownable {
 
     function withdraw(uint assetId, uint amount) external {
         Asset storage asset_data = assetIdToAsset[assetId];
-        uint max_withdraw_usd =  getUserSuppliedUSD(msg.sender) - getUserBorrowedUSD(msg.sender) / ( asset_data.LTV / 100 );
-        uint max_withdraw_tokens = max_withdraw_usd / getLatestPrice(asset_data.priceFeed);
+        uint max_withdraw_usd =  getUserSuppliedUSD(msg.sender) - getUserBorrowedUSD(msg.sender) * 100 /  asset_data.LTV;
+        uint max_withdraw_tokens = (max_withdraw_usd ) / getLatestPrice(asset_data.priceFeed);
         require(amount <= max_withdraw_tokens, "LTV withdraw limit.");
-        IERC20(asset_data.token).transferFrom(address(this), msg.sender, amount);
+        IERC20(asset_data.token).transfer(msg.sender, amount);
         userToSuppliedAmounts[msg.sender][assetId] -= amount; // revert if < 0
         asset_data.supplied -= amount;
     }
@@ -60,7 +51,7 @@ contract HBank is Ownable {
         uint max_borrow_usd = getUserBorrowableUSD(msg.sender);
         uint max_borrow_tokens = max_borrow_usd / getLatestPrice(asset_data.priceFeed);
         require(amount <= max_borrow_tokens, "LTV borrow limit.");  
-        IERC20(asset_data.token).transferFrom(address(this), msg.sender, amount);
+        IERC20(asset_data.token).transfer(msg.sender, amount);
         userToBorrowedAmounts[msg.sender][assetId] += amount;
         asset_data.supplied += amount;
     }
@@ -78,15 +69,17 @@ contract HBank is Ownable {
             uint asset_price = getLatestPrice(asset_data.priceFeed);
             USDamount += userToSuppliedAmounts[user][i] * asset_price;
         }
+        // USDamount /= 1e18;
     }
 
     function getUserBorrowableUSD(address user) public view returns (uint USDamount) {
         for (uint i=0; i<assetCounter; i++){
             Asset memory asset_data = assetIdToAsset[i];
             uint asset_price = getLatestPrice(asset_data.priceFeed);
-            USDamount += userToSuppliedAmounts[user][i] * asset_price * asset_data.LTV;
+            USDamount += userToSuppliedAmounts[user][i] * asset_price * asset_data.LTV / 100;
         }
         USDamount -= getUserBorrowedUSD(user);
+        // USDamount /= 1e18;
     }
 
     function getUserBorrowedUSD(address user) public view returns (uint USDamount) {
@@ -95,6 +88,7 @@ contract HBank is Ownable {
             uint asset_price = getLatestPrice(asset_data.priceFeed);
             USDamount += userToBorrowedAmounts[user][i] * asset_price;
         }
+        // USDamount /= 1e18;
     }
 
     function getSuppliedUSD() public view returns (uint USDamount) {
@@ -103,6 +97,7 @@ contract HBank is Ownable {
             uint asset_price = getLatestPrice(asset_data.priceFeed);
             USDamount += asset_data.supplied * asset_price;
         }
+        // USDamount /= 1e18;
     }
 
     function getBorrowedUSD() public view returns (uint USDamount) {
@@ -111,6 +106,7 @@ contract HBank is Ownable {
             uint asset_price = getLatestPrice(asset_data.priceFeed);
             USDamount += asset_data.borrowed * asset_price;
         }
+        // USDamount /= 1e18;
     }
 
     function getLatestPrice(address priceFeed) internal view returns (uint) {
@@ -123,7 +119,7 @@ contract HBank is Ownable {
         for (uint i=0; i<assetCounter; i++){
             Asset memory asset_data = assetIdToAsset[i];
             uint asset_price = getLatestPrice(asset_data.priceFeed);
-            liquidationThreshold += userToSuppliedAmounts[user][i] * asset_price * asset_data.LTV;
+            liquidationThreshold += userToSuppliedAmounts[user][i] * asset_price * asset_data.LTV / 100;
         }
         liquidationThreshold /= getUserSuppliedUSD(user);
     }
@@ -161,7 +157,6 @@ contract HBank is Ownable {
     }
 
     function addAsset(address token, address priceFeed, uint ltv, uint liquidation_treshold, uint liquidation_penalty) public onlyOwner {
-        // assetIsSupported[asset] = true;
         Asset memory asset_data;
         asset_data.id = assetCounter;
         asset_data.token = token;
@@ -170,9 +165,6 @@ contract HBank is Ownable {
         asset_data.liquiditationThreshold = liquidation_treshold;
         asset_data.liquidationPenalty = liquidation_penalty;
         assetIdToAsset[assetCounter] = asset_data;
-        // assetToIndex[asset] = assetCounter;
-        // indexToAsset[assetCounter] = asset;
-        // assetToPriceFeed[asset] = priceFeed;
         assetCounter += 1;
     }
 }

@@ -10,7 +10,7 @@ import {console} from "forge-std/console.sol";
 
 contract HBankTest is Test {
     
-    uint8 public constant DECIMALS = 18;
+    uint8 public constant DECIMALS = 8;
     int256 public constant INITIAL_ANSWER = 1 * 10**18;
 
     MockV3Aggregator public ethAggregator;
@@ -28,8 +28,8 @@ contract HBankTest is Test {
 
     function setUp() public {
         ethAggregator = new MockV3Aggregator(DECIMALS, 1000 * 10**8);
-        btcAggregator = new MockV3Aggregator(DECIMALS, 20000 * 10**18);
-        usdcAggregator = new MockV3Aggregator(DECIMALS, 1 * 10**18);
+        btcAggregator = new MockV3Aggregator(DECIMALS, 20000 * 10**8);
+        usdcAggregator = new MockV3Aggregator(DECIMALS, 1 * 10**8);
         eth = new MockToken("wETH","Wrapped Ether", Alice, 10 * 10**18);
         btc = new MockToken("wBTC","Wrapped Bitcoin", Alice, 1 * 10**18);
         usdc = new MockToken("USDC","USD COIN", Alice, 10 * 10**18);
@@ -40,27 +40,83 @@ contract HBankTest is Test {
     }
 
     function testAssets() public {
-        (address a,uint b,address c,uint d,uint e,uint f,uint g, uint h) = bank.assetIdToAsset(2);
+        (address a,,,,,,,) = bank.assetIdToAsset(2);
         console.log(ERC20(a).name());
         // (address a,uint b,address c,uint d,uint e,uint f,uint g, uint h) = bank.assetIdToAsset(1);
         // (address a,uint b,address c,uint d,uint e,uint f,uint g, uint h) = bank.assetIdToAsset(2);
         
     }
-    function testSupply() public {
+    function testSupplyWithdraw() public {
         uint assetId = 0;
         uint amount = 10 * 10**18;
+        // vm.assume(assetId < bank.assetCounter());
+        (address assetAddress,,,,,,,) = bank.assetIdToAsset(assetId);
+        // vm.assume(amount <= IERC20(assetAddress).balanceOf(Alice));
+        vm.startPrank(Alice);
+        IERC20(assetAddress).approve(address(bank), amount);
+        bank.supply(assetId, amount);
+        assertEq(bank.getUserSuppliedUSD(Alice), 10 * 1000 * 10**18);
+        bank.withdraw(assetId, amount);
+        assertEq(bank.getUserSuppliedUSD(Alice), 0);
+        vm.stopPrank();
+    }
+
+    function testSupplyWithdrawFuzz(uint assetId, uint amount) public {
         vm.assume(assetId < bank.assetCounter());
         (address assetAddress,,,,,,,) = bank.assetIdToAsset(assetId);
         vm.assume(amount <= IERC20(assetAddress).balanceOf(Alice));
         vm.startPrank(Alice);
         IERC20(assetAddress).approve(address(bank), amount);
         bank.supply(assetId, amount);
-
-        console.log(ERC20(assetAddress).name());
-        console.log(amount);
-        uint usd = bank.getSuppliedUSD();
-        console.log(usd);
+        bank.withdraw(assetId, amount);
+        vm.stopPrank();
     }
+
+
+    function testSupplyBorrow() public {
+        uint assetId = 0;
+        uint supplied_amount = 10 * 10**18;
+        uint borrowed_amount = 5 * 10**18;
+        // vm.assume(assetId < bank.assetCounter());
+        (address assetAddress,,,,,,,) = bank.assetIdToAsset(assetId);
+        // vm.assume(amount <= IERC20(assetAddress).balanceOf(Alice));
+        vm.startPrank(Alice);
+        IERC20(assetAddress).approve(address(bank), supplied_amount);
+        bank.supply(assetId, supplied_amount);
+        assertEq(bank.getUserSuppliedUSD(Alice), 10 * 1000 * 10**18);
+        assertEq(bank.getUserBorrowableUSD(Alice), 7 * 1000 * 10**18);
+        bank.borrow(assetId, borrowed_amount);
+        assertEq(bank.getUserSuppliedUSD(Alice), 10 * 1000 * 10**18);
+        assertEq(bank.getUserBorrowedUSD(Alice), 5 * 1000 * 10**18);
+        assertEq(bank.getUserBorrowableUSD(Alice), 2 * 1000 * 10**18);
+        vm.stopPrank();
+    }
+
+    function testSupplyBorrowFuzz(uint assetId, uint supplied_amout, uint borrowed_amount) public {
+        uint assetId = 0;
+        uint supplied_amount = 10 * 10**18;
+        uint borrowed_amount = 5 * 10**18;
+        vm.assume(assetId < bank.assetCounter());
+        (address assetAddress,,,,,uint ltv,,) = bank.assetIdToAsset(assetId);
+        vm.assume(borrowed_amount < ltv * supplied_amount / 100);
+        vm.assume(supplied_amount <= IERC20(assetAddress).balanceOf(Alice));
+        vm.startPrank(Alice);
+        IERC20(assetAddress).approve(address(bank), supplied_amount);
+        bank.supply(assetId, supplied_amount);
+        bank.borrow(assetId, borrowed_amount);
+        assertEq(IERC20(assetAddress).balanceOf(Alice), borrowed_amount);
+        vm.stopPrank();
+    }
+
+    // function testWithdraw() public {
+    //     uint assetId = 0;
+    //     uint amount = 10 * 10**18;
+    //     // vm.assume(amount <= bank.userToBorrowedAmounts(Alice, assetId));
+    //     (address assetAddress,,,,,,,) = bank.assetIdToAsset(assetId);
+    //     vm.startPrank(Alice);
+    //     bank.withdraw(assetId, amount);
+    //     uint usd = bank.getSuppliedUSD();
+    // }
 
     // function testCreateRaffle() public {
     //     uint raffle1_price = 1000 * 10**18;
