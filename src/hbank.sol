@@ -9,9 +9,9 @@ contract HBank is Ownable {
     // mapping (address => bool) assetIsSupported;
     // mapping (address => uint) suppliedAmount;
     // mapping (address => uint) borrowedAmount;
-
-    mapping (address => uint[]) userToSuppliedAmounts;
-    mapping (address => uint[]) userToBorrowedAmounts;
+    uint public assetCounter;
+    mapping (address => mapping(uint => uint)) userToSuppliedAmounts;
+    mapping (address => mapping(uint => uint)) userToBorrowedAmounts;
     // mapping (address => uint) assetToIndex;
     // mapping (address => address) assetToPriceFeed;
 
@@ -26,12 +26,11 @@ contract HBank is Ownable {
         uint liquidationPenalty;
     }
 
-    mapping (uint => Asset) assetIdToAsset;
+    mapping (uint => Asset) public assetIdToAsset;
 
-    uint assetCounter;
 
     constructor() {
-        // addAsset([]);
+        // addAsset();
     }
 
 //     modifier isWhitelisted(address asset) {
@@ -161,12 +160,15 @@ contract HBank is Ownable {
         collateral_asset.supplied += collateral_amount - penalty_amount; 
     }
 
-    function addAsset(address token, address priceFeed) public onlyOwner {
+    function addAsset(address token, address priceFeed, uint ltv, uint liquidation_treshold, uint liquidation_penalty) public onlyOwner {
         // assetIsSupported[asset] = true;
         Asset memory asset_data;
         asset_data.id = assetCounter;
         asset_data.token = token;
         asset_data.priceFeed = priceFeed;
+        asset_data.LTV = ltv;
+        asset_data.liquiditationThreshold = liquidation_treshold;
+        asset_data.liquidationPenalty = liquidation_penalty;
         assetIdToAsset[assetCounter] = asset_data;
         // assetToIndex[asset] = assetCounter;
         // indexToAsset[assetCounter] = asset;
