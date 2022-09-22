@@ -77,9 +77,7 @@ contract HBankTest is Test {
         uint assetId = 0;
         uint supplied_amount = 10 * 10**18;
         uint borrowed_amount = 5 * 10**18;
-        // vm.assume(assetId < bank.assetCounter());
         (address assetAddress,,,,,,,) = bank.assetIdToAsset(assetId);
-        // vm.assume(amount <= IERC20(assetAddress).balanceOf(Alice));
         vm.startPrank(Alice);
         IERC20(assetAddress).approve(address(bank), supplied_amount);
         bank.supply(assetId, supplied_amount);
@@ -105,6 +103,88 @@ contract HBankTest is Test {
         bank.supply(assetId, supplied_amount);
         bank.borrow(assetId, borrowed_amount);
         assertEq(IERC20(assetAddress).balanceOf(Alice), borrowed_amount);
+        vm.stopPrank();
+    }
+
+    function testSupplyBorrowBorrow() public {
+        uint assetId = 0;
+        uint supplied_amount = 10 * 10**18;
+        uint borrowed_amount = 5 * 10**18;
+        (address assetAddress,,,,,,,) = bank.assetIdToAsset(assetId);
+        vm.startPrank(Alice);
+        IERC20(assetAddress).approve(address(bank), supplied_amount);
+        bank.supply(assetId, supplied_amount);
+        assertEq(bank.getUserSuppliedUSD(Alice), 10 * 1000 * 10**18);
+        assertEq(bank.getUserBorrowableUSD(Alice), 7 * 1000 * 10**18);
+
+        bank.borrow(assetId, borrowed_amount);
+        assertEq(bank.getUserSuppliedUSD(Alice), 10 * 1000 * 10**18);
+        assertEq(bank.getUserBorrowedUSD(Alice), 5 * 1000 * 10**18);
+        assertEq(bank.getUserBorrowableUSD(Alice), 2 * 1000 * 10**18);
+
+        borrowed_amount = 3 * 10**18;
+        vm.expectRevert('LTV borrow limit.');
+        bank.borrow(assetId, borrowed_amount);
+        assertEq(bank.getUserSuppliedUSD(Alice), 10 * 1000 * 10**18);
+        assertEq(bank.getUserBorrowedUSD(Alice), 5 * 1000 * 10**18);
+        assertEq(bank.getUserBorrowableUSD(Alice), 2 * 1000 * 10**18);
+
+        borrowed_amount = 2 * 10**18;
+        // vm.expectRevert('LTV borrow limit.');
+        bank.borrow(assetId, borrowed_amount);
+        assertEq(bank.getUserSuppliedUSD(Alice), 10 * 1000 * 10**18);
+        assertEq(bank.getUserBorrowedUSD(Alice), 7 * 1000 * 10**18);
+        assertEq(bank.getUserBorrowableUSD(Alice), 0 * 1000 * 10**18);
+
+        borrowed_amount = 1;
+        vm.expectRevert('LTV borrow limit.');
+        bank.borrow(assetId, borrowed_amount);
+        assertEq(bank.getUserSuppliedUSD(Alice), 10 * 1000 * 10**18);
+        assertEq(bank.getUserBorrowedUSD(Alice), 7 * 1000 * 10**18);
+        assertEq(bank.getUserBorrowableUSD(Alice), 0 * 1000 * 10**18);
+
+
+        vm.stopPrank();
+    }
+
+    function testSupplyBorrowRepay() public {
+        uint assetId = 0;
+        uint supplied_amount = 10 * 10**18;
+        uint borrowed_amount = 5 * 10**18;
+        uint repay_amount = 3 * 10**18;
+        (address assetAddress,,,,,,,) = bank.assetIdToAsset(assetId);
+        vm.startPrank(Alice);
+        IERC20(assetAddress).approve(address(bank), supplied_amount);
+        bank.supply(assetId, supplied_amount);
+        assertEq(bank.getUserSuppliedUSD(Alice), 10 * 1000 * 10**18);
+        assertEq(bank.getUserBorrowableUSD(Alice), 7 * 1000 * 10**18);
+
+        bank.borrow(assetId, borrowed_amount);
+        assertEq(bank.getUserSuppliedUSD(Alice), 10 * 1000 * 10**18);
+        assertEq(bank.getUserBorrowedUSD(Alice), 5 * 1000 * 10**18);
+        assertEq(bank.getUserBorrowableUSD(Alice), 2 * 1000 * 10**18);
+
+        IERC20(assetAddress).approve(address(bank), repay_amount);
+        bank.repay(assetId, repay_amount);
+        assertEq(bank.getUserSuppliedUSD(Alice), 10 * 1000 * 10**18);
+        assertEq(bank.getUserBorrowedUSD(Alice), 2 * 1000 * 10**18);
+        assertEq(bank.getUserBorrowableUSD(Alice), 5 * 1000 * 10**18);
+
+        IERC20(assetAddress).approve(address(bank), repay_amount);
+        vm.expectRevert("Can't repay more");
+        bank.repay(assetId, repay_amount);
+        assertEq(bank.getUserSuppliedUSD(Alice), 10 * 1000 * 10**18);
+        assertEq(bank.getUserBorrowedUSD(Alice), 2 * 1000 * 10**18);
+        assertEq(bank.getUserBorrowableUSD(Alice), 5 * 1000 * 10**18);
+
+        // borrowed_amount = 1;
+        // vm.expectRevert('LTV borrow limit.');
+        // bank.borrow(assetId, borrowed_amount);
+        // assertEq(bank.getUserSuppliedUSD(Alice), 10 * 1000 * 10**18);
+        // assertEq(bank.getUserBorrowedUSD(Alice), 7 * 1000 * 10**18);
+        // assertEq(bank.getUserBorrowableUSD(Alice), 0 * 1000 * 10**18);
+
+
         vm.stopPrank();
     }
 

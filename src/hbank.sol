@@ -4,7 +4,6 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 
-
 contract HBank is Ownable {
 
     uint public assetCounter;
@@ -25,6 +24,7 @@ contract HBank is Ownable {
 
     mapping (uint => Asset) public assetIdToAsset;
 
+    // TODO write events
 
     constructor() {
     }
@@ -57,6 +57,7 @@ contract HBank is Ownable {
     }
 
     function repay(uint assetId, uint amount) external {
+        require(userToBorrowedAmounts[msg.sender][assetId] >= amount, "Can't repay more"); // Already checked while substracting, find how to optimize
         Asset storage asset_data = assetIdToAsset[assetId];
         IERC20(asset_data.token).transferFrom(msg.sender, address(this), amount);
         userToBorrowedAmounts[msg.sender][assetId] -= amount;
