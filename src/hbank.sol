@@ -25,7 +25,7 @@ contract HBank is Ownable {
     mapping (uint => Asset) public assetIdToAsset;
 
     // TODO write events
-
+    // TODO Find a way to mitigate liquidity risk (interest rate model not allowed)
     constructor() {
     }
 
